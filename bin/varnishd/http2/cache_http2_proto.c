@@ -200,10 +200,8 @@ h2_kill_req(struct worker *wrk, const struct h2_sess *h2,
 			AZ(pthread_cond_signal(r2->cond));
 		r2 = NULL;
 	} else {
-		if (r2->state == H2_S_OPEN) {
-			(void)h2h_decode_fini(h2, r2->decode);
-			FREE_OBJ(r2->decode);
-		}
+		if (r2->state == H2_S_OPEN)
+			(void)h2h_decode_fini(h2);
 	}
 	Lck_Unlock(&h2->sess->mtx);
 	if (r2 != NULL)
@@ -532,8 +530,7 @@ h2_end_headers(struct worker *wrk, struct h2_sess *h2,
 
 	ASSERT_RXTHR(h2);
 	assert(r2->state == H2_S_OPEN);
-	h2e = h2h_decode_fini(h2, r2->decode);
-	FREE_OBJ(r2->decode);
+	h2e = h2h_decode_fini(h2);
 	r2->state = H2_S_CLOS_REM;
 	h2->new_req = NULL;
 	if (h2e != NULL) {
@@ -620,9 +617,7 @@ h2_rx_headers(struct worker *wrk, struct h2_sess *h2, struct h2_req *r2)
 	HTTP_Setup(req->http, req->ws, req->vsl, SLT_ReqMethod);
 	http_SetH(req->http, HTTP_HDR_PROTO, "HTTP/2.0");
 
-	ALLOC_OBJ(r2->decode, H2H_DECODE_MAGIC);
-	AN(r2->decode);
-	h2h_decode_init(h2, r2->decode);
+	h2h_decode_init(h2);
 
 	p = h2->rxf_data;
 	l = h2->rxf_len;
@@ -638,13 +633,12 @@ h2_rx_headers(struct worker *wrk, struct h2_sess *h2, struct h2_req *r2)
 		l -= 5;
 		p += 5;
 	}
-	h2e = h2h_decode_bytes(h2, r2->decode, p, l);
+	h2e = h2h_decode_bytes(h2, p, l);
 	if (h2e != NULL) {
 		Lck_Lock(&h2->sess->mtx);
 		VSLb(h2->vsl, SLT_Debug, "HPACK(hdr) %s", h2e->name);
 		Lck_Unlock(&h2->sess->mtx);
-		(void)h2h_decode_fini(h2, r2->decode);
-		FREE_OBJ(r2->decode);
+		(void)h2h_decode_fini(h2);
 		AZ(r2->req->ws->r);
 		h2_del_req(wrk, r2);
 		return (h2e);
@@ -670,14 +664,13 @@ h2_rx_continuation(struct worker *wrk, struct h2_sess *h2, struct h2_req *r2)
 	if (r2 == NULL || r2->state != H2_S_OPEN)
 		return (H2CE_PROTOCOL_ERROR);	// XXX spec ?
 	req = r2->req;
-	h2e = h2h_decode_bytes(h2, r2->decode, h2->rxf_data, h2->rxf_len);
+	h2e = h2h_decode_bytes(h2, h2->rxf_data, h2->rxf_len);
 	r2->req->acct.req_hdrbytes += h2->rxf_len;
 	if (h2e != NULL) {
 		Lck_Lock(&h2->sess->mtx);
 		VSLb(h2->vsl, SLT_Debug, "HPACK(cont) %s", h2e->name);
 		Lck_Unlock(&h2->sess->mtx);
-		(void)h2h_decode_fini(h2, r2->decode);
-		FREE_OBJ(r2->decode);
+		(void)h2h_decode_fini(h2);
 		AZ(r2->req->ws->r);
 		h2_del_req(wrk, r2);
 		return (h2e);

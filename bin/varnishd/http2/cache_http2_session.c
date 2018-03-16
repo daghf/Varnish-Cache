@@ -98,7 +98,8 @@ h2_local_settings(struct h2_settings *h2s)
  */
 
 static struct h2_sess *
-h2_new_sess(const struct worker *wrk, struct sess *sp, struct req *srq)
+h2_new_sess(const struct worker *wrk, struct sess *sp, struct req *srq,
+    struct h2h_decode *decode)
 {
 	uintptr_t *up;
 	struct h2_sess *h2;
@@ -128,6 +129,7 @@ h2_new_sess(const struct worker *wrk, struct sess *sp, struct req *srq)
 		VTAILQ_INIT(&h2->txqueue);
 		h2_local_settings(&h2->local_settings);
 		h2->remote_settings = H2_proto_settings;
+		h2->decode = decode;
 
 		AZ(VHT_Init(h2->dectbl,
 			h2->local_settings.header_table_size));
@@ -336,6 +338,7 @@ h2_new_session(struct worker *wrk, void *arg)
 	uintptr_t wsp;
 	int again;
 	uint8_t settings[48];
+	struct h2h_decode decode;
 	size_t l;
 
 	CHECK_OBJ_NOTNULL(wrk, WORKER_MAGIC);
@@ -347,7 +350,8 @@ h2_new_session(struct worker *wrk, void *arg)
 
 	assert (req->err_code == H2_PU_MARKER || req->err_code == H2_OU_MARKER);
 
-	h2 = h2_new_sess(wrk, sp, req->err_code == H2_PU_MARKER ? req : NULL);
+	h2 = h2_new_sess(wrk, sp, req->err_code == H2_PU_MARKER ? req : NULL,
+	    &decode);
 	wsp = WS_Snapshot(h2->ws);
 	h2->req0 = h2_new_req(wrk, h2, 0, NULL);
 
